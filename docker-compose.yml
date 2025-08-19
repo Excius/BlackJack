@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:13.22-alpine3.22
+    container_name: blackjack-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=mysecretpassword
+      - POSTGRES_DB=blackjack
+    volumes:
+      - postgres-volume:/var/lib/postgresql/data
+
+volumes:
+  postgres-volume:
