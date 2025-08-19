@@ -14,9 +14,11 @@
   "license": "ISC",
   "type": "module",
   "devDependencies": {
-    "@repo/shared-types": "*",
     "@repo/eslint-config": "*",
+    "@repo/shared-types": "*",
     "@repo/typescript-config": "*",
+    "@types/cookie-parser": "^1.4.9",
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/node": "^22.17.2",
     "nodemon": "^3.1.10",
@@ -24,8 +26,10 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "supertokens-node": "^23.0.1"
   }
 }

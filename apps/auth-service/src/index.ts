@@ -1,11 +1,46 @@
-import express from "express";
-import type { User } from "@repo/shared-types/types";
-const app = express();
+import "./config/supertokens.js";
+import express, { Request, Response, NextFunction } from "express";
+import auth from "./routes/authRoutes.js";
+import user from "./routes/userRoutes.js";
+import cors from "cors";
+import cookieparser from "cookie-parser";
+import supertokens from "supertokens-node";
+import { middleware } from "supertokens-node/framework/express";
+import { verifySession } from "supertokens-node/recipe/session/framework/express";
+import { errorHandler } from "supertokens-node/framework/express";
 
-app.get("/", (req, res) => {
-  res.send("Hello Guys!");
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// SuperTokens cors configuration
+app.use(
+  cors({
+    origin: process.env.WEBSITE_DOMAIN || "http://localhost:3000",
+    allowedHeaders: ["Content-Type", ...supertokens.getAllCORSHeaders()],
+    credentials: true,
+  })
+);
+
+// SuperTokens middleware
+app.use(middleware());
+
+// parsing data
+app.use(cookieparser());
+app.use(express.json());
+
+// Routes
+app.use("/auth", auth);
+app.use("/user", verifySession(), user);
+
+// SuperTokens error handler
+app.use(errorHandler());
+
+// Final error handler
+app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
+  console.error(err);
+  res.status(500).json({ message: "Internal Server Error" });
 });
 
-app.listen(3002, () => {
-  console.log("Auth service is running on port 3002");
+app.listen(PORT, () => {
+  console.log(`Auth service is running on port ${PORT}`);
 });
