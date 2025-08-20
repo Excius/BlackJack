@@ -11,11 +11,8 @@ import { errorHandler } from "supertokens-node/framework/express";
 
 // TODO: Add proper rate-limiting on routes
 // TODO: Add password reset functionality
-// TODO: Add account linkning functionality
-// TODO: Add email verification functionality
 // TODO: Add user Token Enrichment functionality (ading custom claims to JWTs)
 // TODO: Add 2FA functionality
-// TODO: Add email verification functionality
 
 const app = express();
 const PORT = process.env.PORT || 3001;

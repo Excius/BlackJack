@@ -3,7 +3,8 @@ import EmailPassword from "supertokens-node/recipe/emailpassword";
 import Session from "supertokens-node/recipe/session";
 import Dashboard from "supertokens-node/recipe/dashboard";
 import Passwordless from "supertokens-node/recipe/passwordless";
-import ThirdPartyError from "supertokens-node/recipe/thirdparty";
+import ThirdParty from "supertokens-node/recipe/thirdparty";
+import EmailVerificationClaim from "supertokens-node/recipe/emailverification";
 
 SuperTokens.init({
   framework: "express",
@@ -18,14 +19,127 @@ SuperTokens.init({
     websiteDomain: process.env.WEBSITE_DOMAIN || "http://localhost:3000",
   },
   recipeList: [
-    EmailPassword.init(),
+    EmailPassword.init({
+      override: {
+        apis: (originalImplementation, builder) => {
+          return {
+            ...originalImplementation,
+
+            signUpPOST: async function (input) {
+              const emailField = input.formFields.find((f) => f.id === "email");
+              const email =
+                typeof emailField?.value === "string"
+                  ? emailField.value
+                  : undefined;
+
+              if (!email) {
+                return {
+                  status: "GENERAL_ERROR",
+                  message: "Email is required",
+                };
+              }
+
+              const existingUsers = await SuperTokens.listUsersByAccountInfo(
+                "public",
+                {
+                  email,
+                }
+              );
+
+              if (existingUsers.length > 0) {
+                const method = existingUsers[0]?.loginMethods[0]?.recipeId;
+
+                input.options.res.setStatusCode(400);
+                input.options.res.sendJSONResponse({
+                  status: "EMAIL_ALREADY_EXISTS_ERROR",
+                  message:
+                    "An account with this email already exists via another login method.",
+                  method, // send the existing method to client
+                });
+
+                return {
+                  status: "GENERAL_ERROR",
+                  message:
+                    "An account with this email already exists via another login method.",
+                  method,
+                };
+              }
+
+              // Call original implementation if email is free
+              if (typeof originalImplementation.signUpPOST === "function") {
+                return originalImplementation.signUpPOST(input);
+              }
+
+              return {
+                status: "GENERAL_ERROR",
+                message: "Sign up functionality is not available.",
+              };
+            },
+          };
+        },
+      },
+    }),
+
     Session.init(),
     Dashboard.init(),
     Passwordless.init({
       flowType: "USER_INPUT_CODE",
       contactMethod: "EMAIL",
+      override: {
+        apis: (originalImplementation) => {
+          return {
+            ...originalImplementation,
+            createCodePOST: async function (input) {
+              // Only check for email-based login
+              if ("email" in input && typeof input.email === "string") {
+                const existingUsers = await SuperTokens.listUsersByAccountInfo(
+                  input.tenantId,
+                  { email: input.email }
+                );
+
+                if (existingUsers.length === 0) {
+                  // No user exists, allow sign up
+                  return originalImplementation.createCodePOST!(input);
+                }
+
+                // Check if existing user is already a passwordless user
+                const hasPasswordless = existingUsers.find((user) =>
+                  user.loginMethods.find(
+                    (lm) =>
+                      lm.hasSameEmailAs(input.email) &&
+                      lm.recipeId === "passwordless"
+                  )
+                );
+
+                if (hasPasswordless) {
+                  // Existing user uses passwordless — allow code creation
+                  return originalImplementation.createCodePOST!(input);
+                }
+
+                // Email exists with another login method → block
+                input.options.res.setStatusCode(400);
+                input.options.res.sendJSONResponse({
+                  status: "EMAIL_ALREADY_EXISTS_ERROR",
+                  message:
+                    "Seems like you already have an account with another login method. Please use that instead.",
+                  method: existingUsers[0]?.loginMethods[0]?.recipeId,
+                });
+
+                return {
+                  status: "GENERAL_ERROR",
+                  message:
+                    "Seems like you already have an account with another login method. Please use that instead.",
+                };
+              }
+
+              // Phone number login → allow by default
+              return originalImplementation.createCodePOST!(input);
+            },
+          };
+        },
+      },
     }),
-    ThirdPartyError.init({
+    ThirdParty.init({
       signInAndUpFeature: {
         providers: [
           {
@@ -59,6 +173,101 @@ SuperTokens.init({
           },
         ],
       },
+      override: {
+        functions: (originalImplementation) => {
+          return {
+            ...originalImplementation,
+            signInUp: async function (input) {
+              const response = await originalImplementation.signInUp(input);
+
+              if (response.status === "OK") {
+                const email = response.user.emails?.[0];
+                if (email) {
+                  const existingUsers =
+                    await SuperTokens.listUsersByAccountInfo(input.tenantId, {
+                      email,
+                    });
+
+                  if (existingUsers.length === 0) {
+                    // No existing user → allow signup
+                    return response;
+                  }
+
+                  // Check if the same social login already exists
+                  const sameThirdParty = existingUsers.find((user) =>
+                    user.loginMethods.find(
+                      (lm) =>
+                        lm.hasSameThirdPartyInfoAs({
+                          id: input.thirdPartyId,
+                          userId: input.thirdPartyUserId,
+                        }) && lm.recipeId === "thirdparty"
+                    )
+                  );
+
+                  if (sameThirdParty) {
+                    // Same social login → allow signup/sign-in
+                    return response;
+                  }
+
+                  // Email exists with another login method → block
+                  throw new Error("EMAIL_ALREADY_EXISTS_WITH_OTHER_METHOD");
+                }
+              }
+
+              return response;
+            },
+            apis: (
+              originalImplementation: import("supertokens-node/recipe/thirdparty/types").APIInterface
+            ) => {
+              return {
+                ...originalImplementation,
+                signInUpPOST: async function (
+                  input: import("supertokens-node/recipe/thirdparty/types").APIInterface["signInUpPOST"] extends (
+                    input: infer I
+                  ) => any
+                    ? I
+                    : any
+                ) {
+                  try {
+                    return await originalImplementation.signInUpPOST!(input);
+                  } catch (err: any) {
+                    if (
+                      err.message === "EMAIL_ALREADY_EXISTS_WITH_OTHER_METHOD"
+                    ) {
+                      const existingUsers =
+                        await SuperTokens.listUsersByAccountInfo(
+                          input.tenantId,
+                          { email: input.email }
+                        );
+
+                      const method =
+                        existingUsers[0]?.loginMethods[0]?.recipeId;
+
+                      input.options.res.setStatusCode(400);
+                      input.options.res.sendJSONResponse({
+                        status: "EMAIL_ALREADY_EXISTS_ERROR",
+                        message:
+                          "Seems like you already have an account with another login method. Please use that instead.",
+                        method,
+                      });
+
+                      return {
+                        status: "GENERAL_ERROR",
+                        message:
+                          "Seems like you already have an account with another login method. Please use that instead.",
+                      };
+                    }
+                    throw err;
+                  }
+                },
+              };
+            },
+          };
+        },
+      },
+    }),
+    EmailVerificationClaim.init({
+      mode: "REQUIRED",
     }),
   ],
 });
