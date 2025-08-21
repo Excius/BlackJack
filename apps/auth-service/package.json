@@ -14,6 +14,7 @@
   "license": "ISC",
   "type": "module",
   "devDependencies": {
+    "@repo/db": "*",
     "@repo/eslint-config": "*",
     "@repo/shared-types": "*",
     "@repo/typescript-config": "*",

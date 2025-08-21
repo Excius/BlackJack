@@ -18,6 +18,9 @@
       "dependsOn": ["db:generate"],
       "cache": false,
       "persistent": true
+    },
+    "db:generate": {
+      "outputs": []
     }
   }
 }

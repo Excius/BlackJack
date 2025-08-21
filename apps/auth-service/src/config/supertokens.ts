@@ -5,6 +5,28 @@ import Dashboard from "supertokens-node/recipe/dashboard";
 import Passwordless from "supertokens-node/recipe/passwordless";
 import ThirdParty from "supertokens-node/recipe/thirdparty";
 import EmailVerificationClaim from "supertokens-node/recipe/emailverification";
+import { prisma } from "@repo/db";
+
+async function createAppUser(
+  superTokenUserId: string,
+  email: string,
+  name?: string
+) {
+  const existing = await prisma.users.findUnique({
+    where: { superTokenUserId },
+  });
+
+  if (!existing) {
+    return prisma.users.create({
+      data: {
+        superTokenUserId,
+        email,
+        name,
+      },
+    });
+  }
+  return existing;
+}
 
 SuperTokens.init({
   framework: "express",
@@ -21,7 +43,7 @@ SuperTokens.init({
   recipeList: [
     EmailPassword.init({
       override: {
-        apis: (originalImplementation, builder) => {
+        apis: (originalImplementation) => {
           return {
             ...originalImplementation,
 
@@ -65,15 +87,16 @@ SuperTokens.init({
                 };
               }
 
-              // Call original implementation if email is free
-              if (typeof originalImplementation.signUpPOST === "function") {
-                return originalImplementation.signUpPOST(input);
+              const result = await originalImplementation.signUpPOST!(input);
+
+              if (result.status === "OK") {
+                const email = result.user.emails[0];
+                if (typeof email === "string") {
+                  await createAppUser(result.user.id, email);
+                }
               }
 
-              return {
-                status: "GENERAL_ERROR",
-                message: "Sign up functionality is not available.",
-              };
+              return result;
             },
           };
         },
@@ -89,6 +112,7 @@ SuperTokens.init({
         apis: (originalImplementation) => {
           return {
             ...originalImplementation,
+
             createCodePOST: async function (input) {
               // Only check for email-based login
               if ("email" in input && typeof input.email === "string") {
@@ -134,6 +158,20 @@ SuperTokens.init({
 
               // Phone number login → allow by default
               return originalImplementation.createCodePOST!(input);
+            },
+
+            consumeCodePOST: async function (input) {
+              const result =
+                await originalImplementation.consumeCodePOST!(input);
+
+              if (result.status === "OK" && result.createdNewRecipeUser) {
+                const email = result.user.emails[0];
+                if (typeof email === "string") {
+                  await createAppUser(result.user.id, email);
+                }
+              }
+
+              return result;
             },
           };
         },
@@ -211,6 +249,13 @@ SuperTokens.init({
 
                   // Email exists with another login method → block
                   throw new Error("EMAIL_ALREADY_EXISTS_WITH_OTHER_METHOD");
+                }
+              }
+
+              if (response.status === "OK" && response.createdNewRecipeUser) {
+                const email = response.user.emails?.[0];
+                if (typeof email === "string") {
+                  await createAppUser(response.user.id, email);
                 }
               }
 

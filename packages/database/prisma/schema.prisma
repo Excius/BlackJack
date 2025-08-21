@@ -9,6 +9,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Users {
+  id               String   @id @default(cuid())
+  superTokenUserId String   @unique
+  email            String   @unique
+  name             String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([superTokenUserId, id])
+}
+
 model all_auth_recipe_users {
   app_id                                                                                      String                             @default("public") @db.VarChar(64)
   tenant_id                                                                                   String                             @default("public") @db.VarChar(64)
