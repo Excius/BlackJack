@@ -29,6 +29,7 @@ async function createAppUser(
 }
 
 SuperTokens.init({
+  // debug: true,
   framework: "express",
   supertokens: {
     connectionURI:

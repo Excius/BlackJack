@@ -14,10 +14,19 @@ model Users {
   superTokenUserId String   @unique
   email            String   @unique
   name             String?
+  profilePicture   String?
+  phoneNumber      String?
+  role             ROLE     @default(USER)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   @@index([superTokenUserId, id])
+}
+
+enum ROLE {
+  ADMIN
+  MODERATOR
+  USER
 }
 
 model all_auth_recipe_users {
